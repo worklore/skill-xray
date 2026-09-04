@@ -138,34 +138,37 @@ you a glance, a false negative costs you a breach. And **it isn't first** —
 [`mcp-scan`][dev] already exists. What I think is different here is the framing:
 *capability disclosure bound to a content hash, that never once says "safe."*
 
-## A worked example: running it on a real skill
+## A worked example: how the tool got smarter
 
 Take a popular skill, [`humanizer`](https://github.com/blader/humanizer) — it
-rewrites AI-sounding prose using Wikipedia's "Signs of AI writing." Exactly the
-case from the top of this piece: pure instructions, nothing suspicious-looking.
-Run the mechanical scanner and it comes back **T3**. Six findings. Alarming.
+rewrites AI-sounding prose using Wikipedia's "Signs of AI writing." Pure
+instructions, nothing suspicious-looking.
 
-But disclosure is about *reading the findings*, not trusting the tier. All six
-read in under a minute:
+The first version of my scanner gave it **T3** — six findings. Alarming. But
+disclosure is about *reading the findings*, not trusting the tier. I read the
+six lines, and all six were false positives:
 
-- **"persistence"** — a `validate-package.py` script reads its *own* repo's
-  `AGENTS.md` to check the package version. It touches no `~/.claude`, writes
-  nothing, makes no network calls — a CI validator that reads local files and
-  prints "valid." The regex just matched the string `AGENTS.md`.
-- **4× "network"** — reference URLs, not calls the skill makes: `$schema` links
-  in the manifests (schemastore), a skills.sh install badge, and a Wikipedia
-  citation in `SKILL.md`. The skill reaches out to nothing.
-- **"filewrite"** — the regex caught a `<summary>` HTML tag in the README.
+- **"persistence"** — a validation script reads its *own* `AGENTS.md` to check
+  the package version. It touches no `~/.claude`, writes nothing. The regex just
+  matched the string `AGENTS.md`.
+- **4× "network"** — reference URLs, not calls: `$schema` links in the
+  manifests, an install badge, a Wikipedia citation. The skill reaches out to
+  nothing.
+- **"filewrite"** — the regex caught a `<summary>` HTML tag and a Python `->`
+  return arrow.
 
-Verdict: the skill itself is pure instructional text, plus a harmless read-only
-validator in the repo. Honest tier: **T0**, no dangerous capability (in version
-2.11.2, `sha256 0b7ce619…`).
+And here's the interesting part. Those false positives weren't about humanizer —
+they were about *my tool*: it confused a *mention* with an *action*. Reading its
+own repo file isn't persistence. Citing a URL isn't a network call. So I fixed
+it: a config file counts as elevated only next to a write or a home-directory
+path, and a URL counts only inside a real call. The same skill now reads **T0**
+(version 2.11.2, `sha256 0b7ce619…`), with one honest note: "a script reads its
+own file — self-inspection, not an action."
 
-That's the whole moral. The mechanical layer deliberately over-flags — it errs
-toward T3. But the entire "disclosure" fits in six lines you close by reading.
-It's not a green "safe" checkmark; it's a short, concrete "here's what to look
-at" list — and when you look, it closes honestly. The difference between "I was
-told it's fine" and "I can see why it's fine."
+The moral is double. The tier isn't a verdict — the whole disclosure fits in a
+few lines you close by reading, the difference between "I was told it's fine" and
+"I can see why it's fine." And the tool itself gets more honest *because* it's
+open and can be corrected against a real example — which I did, mid-article.
 
 ## Why this matters for worklore specifically
 
@@ -195,6 +198,19 @@ pretend I've nailed it. Some things I genuinely don't know:
 If you've hit a bad skill, or you have a sharper idea for how to signal this —
 please tear this apart in the comments. That's the whole point of writing it
 here.
+
+## P.S. I ran skill-xray on this very article
+
+It came back **T4** — the top alarm level. Because I quote `curl | bash`,
+`env | base64`, `~/.ssh/id_rsa`, and `~/.claude/CLAUDE.md` as examples of
+attacks. The mechanical layer honestly saw those strings and can't know they're
+quotes in an article rather than commands to an agent.
+
+That's not a bug — it's the whole point. The tier flagged five lines; reading
+them takes ten seconds and shows they're prose, not instructions. A tool can
+tell you *where to look*. Whether the human meant to quote or to command, it
+can't say — that's still your job. Which is exactly why: *capability disclosure,
+not a safety verdict.*
 
 [snyk]: https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/
 [dev]: https://dev.to/harivenkatakrishnakotha/your-claude-code-skills-might-be-stealing-your-credentials-right-now-2d0h
