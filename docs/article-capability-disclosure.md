@@ -138,6 +138,35 @@ you a glance, a false negative costs you a breach. And **it isn't first** —
 [`mcp-scan`][dev] already exists. What I think is different here is the framing:
 *capability disclosure bound to a content hash, that never once says "safe."*
 
+## A worked example: running it on a real skill
+
+Take a popular skill, [`humanizer`](https://github.com/blader/humanizer) — it
+rewrites AI-sounding prose using Wikipedia's "Signs of AI writing." Exactly the
+case from the top of this piece: pure instructions, nothing suspicious-looking.
+Run the mechanical scanner and it comes back **T3**. Six findings. Alarming.
+
+But disclosure is about *reading the findings*, not trusting the tier. All six
+read in under a minute:
+
+- **"persistence"** — a `validate-package.py` script reads its *own* repo's
+  `AGENTS.md` to check the package version. It touches no `~/.claude`, writes
+  nothing, makes no network calls — a CI validator that reads local files and
+  prints "valid." The regex just matched the string `AGENTS.md`.
+- **4× "network"** — reference URLs, not calls the skill makes: `$schema` links
+  in the manifests (schemastore), a skills.sh install badge, and a Wikipedia
+  citation in `SKILL.md`. The skill reaches out to nothing.
+- **"filewrite"** — the regex caught a `<summary>` HTML tag in the README.
+
+Verdict: the skill itself is pure instructional text, plus a harmless read-only
+validator in the repo. Honest tier: **T0**, no dangerous capability (in version
+2.11.2, `sha256 0b7ce619…`).
+
+That's the whole moral. The mechanical layer deliberately over-flags — it errs
+toward T3. But the entire "disclosure" fits in six lines you close by reading.
+It's not a green "safe" checkmark; it's a short, concrete "here's what to look
+at" list — and when you look, it closes honestly. The difference between "I was
+told it's fine" and "I can see why it's fine."
+
 ## Why this matters for worklore specifically
 
 Here's my actual, selfish reason. worklore stories are text you hand your agent,
