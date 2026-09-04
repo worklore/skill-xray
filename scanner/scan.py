@@ -78,20 +78,9 @@ rule("obfuscation", "opaque",
      "zero-width or bidirectional unicode control chars (hidden text)",
      r"[​‌‍⁠‪-‮⁦-⁩]")
 
-# --- ELEVATED: persistence, privilege, secrets, destruction, out-of-project
-#     writes. The "survives reboot" / "read my passwords" class. Forces T3. ---
-rule("persistence", "elevated",
-     "edits agent memory/config that persists across sessions",
-     r"(?:CLAUDE\.md|AGENTS\.md|\.cursorrules|settings\.local\.json|"
-     r"settings\.json|\.claude/|\.codex/|\.config/)")
-rule("persistence", "elevated",
-     "edits shell startup or scheduler (persists across reboot)",
-     r"(?:\.bashrc|\.zshrc|\.zshenv|\.profile|\.bash_profile|crontab|"
-     r"launchctl|systemctl|LaunchAgents|LaunchDaemons|/etc/)")
-rule("persistence", "elevated",
-     "installs or registers a hook that runs automatically",
-     r"\bhooks?\b[^\n]{0,30}(?:PreToolUse|PostToolUse|SessionStart|Stop|"
-     r"pre-commit|post-commit|install)")
+# --- ELEVATED: privilege, secrets, destruction. The "read my passwords" /
+#     "survives reboot" class. Forces T3. (Persistence is context-aware — see
+#     the CONFIG/WRITE/HOME regexes and the scan loop below.) ---
 rule("secrets", "elevated",
      "references credential/secret file locations",
      r"(?:\.aws/|\.ssh/|id_rsa|id_ed25519|\.netrc|\.npmrc|\.env\b|"
@@ -107,22 +96,53 @@ rule("privilege", "elevated",
 rule("exfil", "elevated",
      "raw socket / netcat (possible exfiltration channel)",
      r"\b(?:nc|ncat|netcat)\b|/dev/tcp/")
+rule("persistence", "elevated",
+     "installs or registers a hook that runs automatically",
+     r"\bhooks?\b[^\n]{0,30}(?:PreToolUse|PostToolUse|SessionStart|Stop|"
+     r"pre-commit|post-commit|install)")
 
-# --- NETWORK: outbound calls. Forces at least T2. ---
-rule("network", "network",
-     "makes outbound network requests",
-     r"\b(?:curl|wget|https?://|urllib|requests\.(?:get|post)|fetch\(|"
-     r"axios|http\.client|Net::HTTP|WebClient)\b")
-
-# --- LOCAL: runs bundled code / writes files. Forces at least T1. ---
+# --- LOCAL: runs bundled code. Forces at least T1. ---
 rule("exec-local", "local",
      "runs a shell/process locally",
      r"\b(?:subprocess|os\.system|child_process|exec[lv]?p?\(|Process\.run|"
      r"system\()\b")
-rule("filewrite", "local",
-     "writes or deletes files",
-     r"\b(?:open\([^)]*['\"][wa]|writeFile|>>?\s*[\w./-]+|fs\.write|"
-     r"\bmv\b|\bcp\b|\brm\b|\btee\b)\b")
+
+# --- Context-aware detection (handled in the scan loop, not as flat rules),
+#     so a *reference* or a skill *reading its own repo* isn't mistaken for an
+#     *action on the user's environment*. This is what separates "cites a URL"
+#     from "fetches a URL", and "reads its own AGENTS.md" from "edits your
+#     ~/.claude/CLAUDE.md". ---
+
+# Agent-config / shell-startup / scheduler files.
+CONFIG_FILE = re.compile(
+    r"(?:CLAUDE\.md|AGENTS\.md|SOUL\.md|MEMORY\.md|\.cursorrules|"
+    r"settings\.local\.json|settings\.json|\.claude/|\.codex/|"
+    r"\.bashrc|\.zshrc|\.zshenv|\.profile|\.bash_profile|"
+    r"crontab|launchctl|systemctl|LaunchAgents|LaunchDaemons)", re.I)
+# A write/mutate operation on the same line as the file.
+WRITE_CTX = re.compile(
+    r"(?:>>|write_text|writeFile|fs\.write|open\([^)]*['\"][wa]\+?['\"]|"
+    r"\bappend\b|\btee\b|\bsed\s+-i|Add-Content|Set-Content|echo[^\n]*>>?|"
+    r"\binstall(?:s|ed|ing)?\b|\binto\b|\bwrite[s]?\s+to\b|\bmodif|\bedit)", re.I)
+# The USER's environment, as opposed to a repo-relative path (ROOT/..., ./...).
+HOME_ANCHOR = re.compile(
+    r"(?:~/|\$HOME|\$\{HOME\}|expanduser|/Users/[^/\s]+/|/home/[^/\s]+/|"
+    r"/etc/|/Library/)", re.I)
+# A genuine outbound call. curl/wget count only alongside a URL (so prose like
+# "auto-curl" doesn't match); code HTTP clients count on their own.
+SHELL_FETCH = re.compile(r"(?<![\w-])(?:curl|wget)\b", re.I)
+CODE_CALL = re.compile(
+    r"\b(?:fetch\(|requests\.(?:get|post|put|delete|request|head)|"
+    r"urllib|urlopen|httpx?\.|http\.client|axios|XMLHttpRequest|Net::HTTP|"
+    r"WebClient|HttpClient|Invoke-WebRequest|iwr)\b", re.I)
+# A real file-write via an explicit API/command. Deliberately excludes bare
+# '>'/'>' redirects — they collide with markdown blockquotes ("> text") and
+# type arrows ("-> T"); an append to a config file is still caught by
+# WRITE_CTX above.
+FILE_WRITE = re.compile(
+    r"(?:open\([^)]*['\"][wa]\+?['\"]|write_text|writeFile|fs\.write(?:File|Sync)?|"
+    r"\btee\s|\bsed\s+-i|Add-Content|Set-Content|\brm\s+-|\bmv\s+[~./\w]|"
+    r"\bcp\s+[~./\w])", re.I)
 
 SEV_RANK = {"info": 0, "local": 1, "network": 2, "elevated": 3, "opaque": 4}
 TIER_OF_SEV = {0: "T0", 1: "T1", 2: "T2", 3: "T3", 4: "T4"}
@@ -204,8 +224,41 @@ def scan(root: Path) -> Report:
                 if pat.search(line):
                     findings.append(Finding(
                         cat, sev, why, rel, i, line.strip()[:200]))
-            for m in URL_RE.findall(line):
-                endpoints.add(m.rstrip(".,);"))
+
+            # Context-aware: config/persistence. Editing the user's agent
+            # config or startup is elevated; merely reading/naming a
+            # repo-relative config file (a skill inspecting its own repo) is
+            # disclosed but not alarming.
+            if CONFIG_FILE.search(line):
+                if WRITE_CTX.search(line) or HOME_ANCHOR.search(line):
+                    findings.append(Finding(
+                        "persistence", "elevated",
+                        "edits agent config / startup in the user's environment "
+                        "(persists across sessions)", rel, i, line.strip()[:200]))
+                else:
+                    findings.append(Finding(
+                        "config-ref", "info",
+                        "names a config/agent file, repo-relative and without a "
+                        "write (likely self-inspection, not an action)",
+                        rel, i, line.strip()[:200]))
+
+            # Context-aware: network. A URL inside an actual call is a network
+            # capability; a bare URL in prose/manifest is a reference, listed
+            # in endpoints[] for transparency but not a capability finding.
+            urls = [u.rstrip(".,);") for u in URL_RE.findall(line)]
+            for u in urls:
+                endpoints.add(u)
+            if CODE_CALL.search(line) or (SHELL_FETCH.search(line) and urls):
+                findings.append(Finding(
+                    "network", "network",
+                    "makes an outbound network request", rel, i,
+                    line.strip()[:200]))
+
+            # Context-aware: file writes (real write ops only, not any '>').
+            if FILE_WRITE.search(line):
+                findings.append(Finding(
+                    "filewrite", "local", "writes or deletes files",
+                    rel, i, line.strip()[:200]))
 
     max_sev = max((SEV_RANK[f.severity] for f in findings), default=0)
     tier = TIER_OF_SEV[max_sev]
