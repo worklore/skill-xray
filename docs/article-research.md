@@ -1,9 +1,23 @@
 # Research notes — sources for the capability-disclosure article
 
 Collected 2026-09-03. Primary-source facts and quotes to cite, plus how each
-maps to a skill-xray tier. (A specific Twitter/X first-person "the skill tried
-to read my passwords" thread is referenced anecdotally but not yet located —
-add the link if found.)
+maps to a skill-xray tier.
+
+## Lede — the first-person story (Telegram, @TochkiNadAI)
+
+https://t.me/TochkiNadAI/2604 — a dev asked Claude for an audio-transcription
+app, got a link + install command, pasted it into the terminal. Within a minute
+passwords, cookies, and crypto-wallet keys were exfiltrated (the site was a
+clone of a real platform). The payload: after he wiped and reinstalled the OS
+and restored his working-files backup, the **same SKILL.md came back with the
+backup** — disguised as his own writing-style skill — carrying an instruction to
+re-download the trojan and steal credentials on the next session start. **The
+infection survived an OS reinstall because it lived in the agent config the
+author backed up himself.** Maps to **T3 (persistence + secrets)** — exactly
+what skill-xray flags before you run it. Author's own advice worth echoing:
+read third-party skills fully before install, prefer writing your own, audit
+your skills folder monthly, and put "no downloads/installs without approval"
+into the agent's rules. This is the article's opening hook.
 
 ## Anchor study — the numbers
 
