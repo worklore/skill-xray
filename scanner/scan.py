@@ -35,7 +35,7 @@ from pathlib import Path
 # Bump when detection changes so a tier can be compared meaningfully across
 # server (publish-time) and client (reproduction-time) runs. A drift report
 # carries this so we never compare tiers computed by different rule sets.
-SCANNER_VERSION = "0.3.0"
+SCANNER_VERSION = "0.3.1"
 
 # Files worth reading as instruction/text/code. Binary and vendored trees are
 # hashed for provenance but not pattern-scanned.
@@ -68,7 +68,9 @@ rule("remote-exec", "opaque",
      r"(?:curl|wget|fetch)\b[^\n|]*\|\s*(?:sudo\s+)?(?:ba)?sh\b")
 rule("remote-exec", "opaque",
      "evaluates the output of a network download",
-     r"(?:eval|exec|source|Invoke-Expression|iex)\b[^\n]*(?:curl|wget|https?://)")
+     # `source(?!\s*:)` so a citation label "source: <link>" doesn't match the
+     # shell builtin `source`.
+     r"(?:eval|exec|source(?!\s*:)|Invoke-Expression|iex)\b[^\n]*(?:curl|wget|https?://)")
 rule("remote-exec", "opaque",
      "decodes a blob and executes it",
      r"base64\s+(?:-d|--decode)[^\n|]*\|\s*(?:ba)?sh\b")
