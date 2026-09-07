@@ -132,9 +132,14 @@ reading `~/.aws` and `~/.ssh` → T3; appending persistence to `CLAUDE.md` → T
 `curl | bash` and fetch-and-follow → T4, flagged as un-reviewable.
 
 I want to be honest about two things. **It's v0.1**, and it's intentionally
-trigger-happy — it flags its *own* documentation as T3 for merely mentioning
-`CLAUDE.md`. For a disclosure tool that's the right bias: a false positive costs
-you a glance, a false negative costs you a breach.
+trigger-happy — it flags even its *own* documentation: the whole skill-xray repo
+scans as T4. Not for mentioning `CLAUDE.md` (that early false positive is fixed —
+a bare mention is now info, not T3), but because the docs quote `curl | bash` and
+examples like "install into `~/.claude`". The scanner honestly sees those
+*strings* and can't tell "an attack described in documentation" from "a command
+to the agent" — exactly what you'll see in the P.S. about this very article. For
+a disclosure tool that's the right bias: a false positive costs you a glance, a
+false negative costs you a breach.
 
 And — to head off the obvious comment — **I'm not reinventing a scanner or
 competing on detection.** Good detection already exists: [Snyk agent-scan][snyk-scan],
