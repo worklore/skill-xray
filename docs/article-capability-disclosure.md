@@ -134,9 +134,26 @@ reading `~/.aws` and `~/.ssh` → T3; appending persistence to `CLAUDE.md` → T
 I want to be honest about two things. **It's v0.1**, and it's intentionally
 trigger-happy — it flags its *own* documentation as T3 for merely mentioning
 `CLAUDE.md`. For a disclosure tool that's the right bias: a false positive costs
-you a glance, a false negative costs you a breach. And **it isn't first** —
-[`mcp-scan`][dev] already exists. What I think is different here is the framing:
-*capability disclosure bound to a content hash, that never once says "safe."*
+you a glance, a false negative costs you a breach.
+
+And — to head off the obvious comment — **I'm not reinventing a scanner or
+competing on detection.** Good detection already exists: [Snyk agent-scan][snyk-scan],
+[Cisco's IDE scanner][cisco], [claude-skill-antivirus][cav] (nine engines), and
+Kaspersky's enterprise **AI Protect** platform, which vets agents and AI
+components before deployment (they counted 15,000+ malware samples disguised as
+agentic software this year). They have more engines, more data, and more
+resources than I do — racing them on malware detection would be pointless and
+dishonest.
+
+The difference is elsewhere. Almost all of them emit a **verdict**: `✅ SAFE` /
+"do not install." skill-xray deliberately never says "safe." It's a thin honest
+layer on top of detection: **capability disclosure + tier + content-hash**,
+where the engine can be the built-in scanner (default, zero-dependency) or any
+external tool plugged in as a backend — but that tool's "safe / don't install"
+verdict is *dropped*; only findings cross the border. Plus the thing none of them
+have: the tier shown right on worklore stories. So the value isn't "I detect
+better than Kaspersky" — it's "the honest frame and provenance that
+verdict-scanners don't give you."
 
 ## A worked example: how the tool got smarter
 
@@ -214,4 +231,7 @@ not a safety verdict.*
 
 [snyk]: https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/
 [dev]: https://dev.to/harivenkatakrishnakotha/your-claude-code-skills-might-be-stealing-your-credentials-right-now-2d0h
+[snyk-scan]: https://github.com/snyk/agent-scan
+[cisco]: https://blogs.cisco.com/ai/introducing-the-ai-agent-security-scanner-for-ides-verify-your-agents
+[cav]: https://github.com/claude-world/claude-skill-antivirus
 [docker]: https://www.docker.com/blog/mcp-horror-stories-the-supply-chain-attack/
