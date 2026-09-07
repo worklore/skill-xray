@@ -86,6 +86,19 @@ Two layers:
 A higher tier is not automatically worse — a legitimate deploy skill is
 honestly T3. The tier says *how hard to look*; the report says *what to look at*.
 
+## Not another scanner — a layer over them
+
+There's already good detection out there: [Snyk agent-scan / MCP-Scan](https://github.com/snyk/agent-scan),
+[Cisco's IDE scanner](https://blogs.cisco.com/ai/introducing-the-ai-agent-security-scanner-for-ides-verify-your-agents),
+[claude-skill-antivirus](https://github.com/claude-world/claude-skill-antivirus)
+(9 engines), and enterprise platforms like Kaspersky AI Protect. skill-xray does
+**not** compete on detection. It's the honest layer on top: **capability
+disclosure instead of a "safe" verdict, bound to a content hash, over one or
+more detection backends.** The built-in scanner is the zero-dependency default;
+an external tool can be plugged in as a backend and its findings merged — but its
+"safe / do not install" verdict is always dropped, only findings cross over. See
+[docs/backends.md](docs/backends.md).
+
 ## Usage
 
 ```bash

@@ -163,6 +163,13 @@ class Finding:
     file: str
     line: int
     evidence: str
+    # Which detection backend produced this. skill-xray does not compete on
+    # detection — it is a disclosure + provenance layer, and an external
+    # scanner (e.g. claude-skill-antivirus, snyk) can feed findings in as
+    # another backend. See docs/backends.md for the adapter contract; the
+    # severity a backend reports is mapped onto our tiers, and its own
+    # "safe / do not install" verdict is deliberately dropped.
+    backend: str = "builtin"
 
 
 @dataclass
@@ -172,6 +179,7 @@ class Report:
     files_scanned: int
     tier: str
     tier_label: str
+    backends: list[str] = field(default_factory=lambda: ["builtin"])
     endpoints: list[str] = field(default_factory=list)
     findings: list[dict] = field(default_factory=list)
     disclaimer: str = (
@@ -197,7 +205,7 @@ def iter_files(root: Path):
             yield p
 
 
-def scan(root: Path) -> Report:
+def scan(root: Path, backends: tuple[str, ...] = ("builtin",)) -> Report:
     hasher = hashlib.sha256()
     findings: list[Finding] = []
     endpoints: set[str] = set()
@@ -260,14 +268,36 @@ def scan(root: Path) -> Report:
                     "filewrite", "local", "writes or deletes files",
                     rel, i, line.strip()[:200]))
 
+    # Optional external detection backends. skill-xray does not compete on
+    # detection: another scanner can be plugged in here and its findings merged.
+    # An adapter is a callable(root: Path) -> list[Finding], each Finding tagged
+    # with its `backend` name and a severity from SEV_RANK; its own
+    # "safe/do-not-install" verdict is dropped — only findings cross the border.
+    # See docs/backends.md. The registry ships empty: a backend is wired only
+    # after it is itself audited (with skill-xray) and verified.
+    ran = ["builtin"]
+    for name in backends:
+        if name == "builtin":
+            continue
+        adapter = EXTERNAL_BACKENDS.get(name)
+        if adapter is None:
+            print(f"skill-xray: backend '{name}' not available; skipping",
+                  file=sys.stderr)
+            continue
+        try:
+            findings.extend(adapter(root))
+            ran.append(name)
+        except Exception as e:  # a backend must never crash the disclosure
+            print(f"skill-xray: backend '{name}' failed: {e}", file=sys.stderr)
+
     max_sev = max((SEV_RANK[f.severity] for f in findings), default=0)
     tier = TIER_OF_SEV[max_sev]
     # De-dup identical findings (same rule hitting many lines is noise); keep
-    # first occurrence per (category, why, file).
+    # first occurrence per (backend, category, why, file).
     seen = set()
     uniq: list[Finding] = []
     for f in sorted(findings, key=lambda f: (-SEV_RANK[f.severity], f.file, f.line)):
-        key = (f.category, f.why, f.file)
+        key = (f.backend, f.category, f.why, f.file)
         if key in seen:
             continue
         seen.add(key)
@@ -279,22 +309,33 @@ def scan(root: Path) -> Report:
         files_scanned=n,
         tier=tier,
         tier_label=TIER_LABEL[tier],
+        backends=ran,
         endpoints=sorted(endpoints),
         findings=[asdict(f) for f in uniq],
     )
 
 
+# name -> callable(root: Path) -> list[Finding]. Empty by design; see the note
+# in scan() and docs/backends.md. Register a backend only after auditing it.
+EXTERNAL_BACKENDS: dict[str, "callable"] = {}
+
+
 def main(argv: list[str]) -> int:
     args = [a for a in argv[1:] if not a.startswith("-")]
     if not args:
-        print(__doc__.strip().splitlines()[-3], file=sys.stderr)
-        print("usage: python3 scan.py <path> [--json]", file=sys.stderr)
+        print("usage: python3 scan.py <path> [--json] [--backend NAME ...]",
+              file=sys.stderr)
         return 2
     root = Path(args[0]).expanduser()
     if not root.exists():
         print(f"no such path: {root}", file=sys.stderr)
         return 2
-    report = scan(root)
+    # --backend may repeat; builtin always runs.
+    backends = ["builtin"]
+    for i, a in enumerate(argv):
+        if a == "--backend" and i + 1 < len(argv):
+            backends.append(argv[i + 1])
+    report = scan(root, backends=tuple(backends))
     print(json.dumps(asdict(report), indent=2))
     return 0
 
