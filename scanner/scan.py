@@ -32,6 +32,11 @@ import sys
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+# Bump when detection changes so a tier can be compared meaningfully across
+# server (publish-time) and client (reproduction-time) runs. A drift report
+# carries this so we never compare tiers computed by different rule sets.
+SCANNER_VERSION = "0.2.0"
+
 # Files worth reading as instruction/text/code. Binary and vendored trees are
 # hashed for provenance but not pattern-scanned.
 TEXT_SUFFIXES = {
@@ -205,6 +210,83 @@ def iter_files(root: Path):
             yield p
 
 
+def detect(text: str, rel: str) -> tuple[list[Finding], set[str]]:
+    """Run the built-in static detection over one text unit (a file or an
+    in-memory string). Returns (findings, endpoints). Pure and side-effect free
+    so the same logic serves both a directory scan and a single-string scan —
+    which is what keeps the server (publish-time) and the client (reproduction-
+    time) computing the SAME tier for the same bytes."""
+    findings: list[Finding] = []
+    endpoints: set[str] = set()
+    for i, line in enumerate(text.splitlines(), 1):
+        for cat, sev, why, pat in RULES:
+            if pat.search(line):
+                findings.append(Finding(cat, sev, why, rel, i, line.strip()[:200]))
+
+        # Config/persistence: editing the user's agent config or startup is
+        # elevated; naming/reading a repo-relative config file (a skill
+        # inspecting its own repo) is disclosed but not alarming.
+        if CONFIG_FILE.search(line):
+            if WRITE_CTX.search(line) or HOME_ANCHOR.search(line):
+                findings.append(Finding(
+                    "persistence", "elevated",
+                    "edits agent config / startup in the user's environment "
+                    "(persists across sessions)", rel, i, line.strip()[:200]))
+            else:
+                findings.append(Finding(
+                    "config-ref", "info",
+                    "names a config/agent file, repo-relative and without a "
+                    "write (likely self-inspection, not an action)",
+                    rel, i, line.strip()[:200]))
+
+        # Network: a URL inside an actual call is a capability; a bare URL in
+        # prose/manifest is a reference (listed in endpoints, not a finding).
+        urls = [u.rstrip(".,);") for u in URL_RE.findall(line)]
+        for u in urls:
+            endpoints.add(u)
+        if CODE_CALL.search(line) or (SHELL_FETCH.search(line) and urls):
+            findings.append(Finding(
+                "network", "network", "makes an outbound network request",
+                rel, i, line.strip()[:200]))
+
+        # File writes: explicit write ops only (not any '>').
+        if FILE_WRITE.search(line):
+            findings.append(Finding(
+                "filewrite", "local", "writes or deletes files",
+                rel, i, line.strip()[:200]))
+    return findings, endpoints
+
+
+def _finalize(artifact: str, sha256: str, files_scanned: int,
+              findings: list[Finding], endpoints: set[str],
+              backends_run: list[str]) -> Report:
+    max_sev = max((SEV_RANK[f.severity] for f in findings), default=0)
+    tier = TIER_OF_SEV[max_sev]
+    seen, uniq = set(), []
+    for f in sorted(findings, key=lambda f: (-SEV_RANK[f.severity], f.file, f.line)):
+        key = (f.backend, f.category, f.why, f.file)
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append(f)
+    return Report(
+        artifact=artifact, sha256=sha256, files_scanned=files_scanned,
+        tier=tier, tier_label=TIER_LABEL[tier], backends=backends_run,
+        endpoints=sorted(endpoints), findings=[asdict(f) for f in uniq],
+    )
+
+
+def scan_text(text: str, name: str = "SKILL.md") -> Report:
+    """Scan a single in-memory string (a story's markdown, one SKILL.md).
+    The sha256 is over `name` + text, matching the per-file hashing in scan()
+    so a one-file skill and its string form produce the same hash."""
+    hasher = hashlib.sha256()
+    hasher.update(name.encode())
+    hasher.update(text.encode("utf-8"))
+    findings, endpoints = detect(text, name)
+    return _finalize(name, hasher.hexdigest(), 1, findings, endpoints, ["builtin"])
+
+
 def scan(root: Path, backends: tuple[str, ...] = ("builtin",)) -> Report:
     hasher = hashlib.sha256()
     findings: list[Finding] = []
@@ -227,46 +309,9 @@ def scan(root: Path, backends: tuple[str, ...] = ("builtin",)) -> Report:
         except Exception:
             continue
         rel = str(p.relative_to(root) if root.is_dir() else p.name)
-        for i, line in enumerate(text.splitlines(), 1):
-            for cat, sev, why, pat in RULES:
-                if pat.search(line):
-                    findings.append(Finding(
-                        cat, sev, why, rel, i, line.strip()[:200]))
-
-            # Context-aware: config/persistence. Editing the user's agent
-            # config or startup is elevated; merely reading/naming a
-            # repo-relative config file (a skill inspecting its own repo) is
-            # disclosed but not alarming.
-            if CONFIG_FILE.search(line):
-                if WRITE_CTX.search(line) or HOME_ANCHOR.search(line):
-                    findings.append(Finding(
-                        "persistence", "elevated",
-                        "edits agent config / startup in the user's environment "
-                        "(persists across sessions)", rel, i, line.strip()[:200]))
-                else:
-                    findings.append(Finding(
-                        "config-ref", "info",
-                        "names a config/agent file, repo-relative and without a "
-                        "write (likely self-inspection, not an action)",
-                        rel, i, line.strip()[:200]))
-
-            # Context-aware: network. A URL inside an actual call is a network
-            # capability; a bare URL in prose/manifest is a reference, listed
-            # in endpoints[] for transparency but not a capability finding.
-            urls = [u.rstrip(".,);") for u in URL_RE.findall(line)]
-            for u in urls:
-                endpoints.add(u)
-            if CODE_CALL.search(line) or (SHELL_FETCH.search(line) and urls):
-                findings.append(Finding(
-                    "network", "network",
-                    "makes an outbound network request", rel, i,
-                    line.strip()[:200]))
-
-            # Context-aware: file writes (real write ops only, not any '>').
-            if FILE_WRITE.search(line):
-                findings.append(Finding(
-                    "filewrite", "local", "writes or deletes files",
-                    rel, i, line.strip()[:200]))
+        f, e = detect(text, rel)
+        findings.extend(f)
+        endpoints |= e
 
     # Optional external detection backends. skill-xray does not compete on
     # detection: another scanner can be plugged in here and its findings merged.
@@ -290,29 +335,7 @@ def scan(root: Path, backends: tuple[str, ...] = ("builtin",)) -> Report:
         except Exception as e:  # a backend must never crash the disclosure
             print(f"skill-xray: backend '{name}' failed: {e}", file=sys.stderr)
 
-    max_sev = max((SEV_RANK[f.severity] for f in findings), default=0)
-    tier = TIER_OF_SEV[max_sev]
-    # De-dup identical findings (same rule hitting many lines is noise); keep
-    # first occurrence per (backend, category, why, file).
-    seen = set()
-    uniq: list[Finding] = []
-    for f in sorted(findings, key=lambda f: (-SEV_RANK[f.severity], f.file, f.line)):
-        key = (f.backend, f.category, f.why, f.file)
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append(f)
-
-    return Report(
-        artifact=str(root),
-        sha256=hasher.hexdigest(),
-        files_scanned=n,
-        tier=tier,
-        tier_label=TIER_LABEL[tier],
-        backends=ran,
-        endpoints=sorted(endpoints),
-        findings=[asdict(f) for f in uniq],
-    )
+    return _finalize(str(root), hasher.hexdigest(), n, findings, endpoints, ran)
 
 
 # name -> callable(root: Path) -> list[Finding]. Empty by design; see the note
