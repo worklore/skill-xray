@@ -137,9 +137,8 @@ scans as T4. Not for mentioning `CLAUDE.md` (that early false positive is fixed 
 a bare mention is now info, not T3), but because the docs quote `curl | bash` and
 examples like "install into `~/.claude`". The scanner honestly sees those
 *strings* and can't tell "an attack described in documentation" from "a command
-to the agent" — exactly what you'll see in the P.S. about this very article. For
-a disclosure tool that's the right bias: a false positive costs you a glance, a
-false negative costs you a breach.
+to the agent." For a disclosure tool that's the right bias: a false positive
+costs you a glance, a false negative costs you a breach.
 
 And — to head off the obvious comment — **I'm not reinventing a scanner or
 competing on detection.** Good detection already exists: [Snyk agent-scan][snyk-scan],
@@ -241,19 +240,6 @@ pretend I've nailed it. Some things I genuinely don't know:
 If you've hit a bad skill, or you have a sharper idea for how to signal this —
 please tear this apart in the comments. That's the whole point of writing it
 here.
-
-## P.S. I ran skill-xray on this very article
-
-It came back **T4** — the top alarm level. Because I quote `curl | bash`,
-`env | base64`, `~/.ssh/id_rsa`, and `~/.claude/CLAUDE.md` as examples of
-attacks. The mechanical layer honestly saw those strings and can't know they're
-quotes in an article rather than commands to an agent.
-
-That's not a bug — it's the whole point. The tier flagged five lines; reading
-them takes ten seconds and shows they're prose, not instructions. A tool can
-tell you *where to look*. Whether the human meant to quote or to command, it
-can't say — that's still your job. Which is exactly why: *capability disclosure,
-not a safety verdict.*
 
 [snyk]: https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/
 [dev]: https://dev.to/harivenkatakrishnakotha/your-claude-code-skills-might-be-stealing-your-credentials-right-now-2d0h
