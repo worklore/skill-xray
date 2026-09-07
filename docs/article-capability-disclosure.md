@@ -192,7 +192,7 @@ honest caveat: the reproducer step is an instruction to the agent, not
 enforcement — an agent can skip it. worklore is cooperative by nature, and I'd
 rather say that out loud than pretend the hole is fully closed.
 
-## What it can't catch yet — and where I need you
+## What it can't catch yet — and where your take matters
 
 The tool honestly shows **structural** signals: file paths, commands, config
 writes. Those can't be hidden — to make an agent read your key the skill must
@@ -211,7 +211,7 @@ or in any language. Only the second, agent layer can catch it — and that layer
 can itself be fooled by the same text (the snake eating its tail). Honest bottom
 line: I cover the structural, not intent-in-prose; that one's open.
 
-And this is where I need you. The tool's job isn't to render a verdict — it's to
+And this is where your take matters. The tool's job isn't to render a verdict — it's to
 **draw attention** to exactly the lines worth pausing on. Between two walls with a
 narrow gap:
 
