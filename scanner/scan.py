@@ -35,7 +35,7 @@ from pathlib import Path
 # Bump when detection changes so a tier can be compared meaningfully across
 # server (publish-time) and client (reproduction-time) runs. A drift report
 # carries this so we never compare tiers computed by different rule sets.
-SCANNER_VERSION = "0.2.0"
+SCANNER_VERSION = "0.3.0"
 
 # Files worth reading as instruction/text/code. Binary and vendored trees are
 # hashed for provenance but not pattern-scanned.
