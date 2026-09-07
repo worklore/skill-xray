@@ -194,10 +194,31 @@ and they reference other people's skills, tools, and articles. That's a trust
 chain I'm asking people to walk down. I don't want a worklore story to quietly
 tell your agent to `curl | bash` and have you find out afterwards.
 
-So the plan is: every story carries a visible capability disclosure — most are
-T0–T2, and if one reaches for something bigger, you see the tier *before* you
-run it. Not a promise that I vetted it and it's safe. A description you can
-re-derive yourself, pinned to the exact version you're looking at.
+So every worklore story now carries a visible capability tier — and it's built
+honestly from three sources, because no single one can be trusted alone:
+
+1. **Text floor (server).** The server sees only the story text and tiers it
+   itself. Un-fakeable, and it catches dangerous instructions in the story
+   (`curl | bash`, "install into `~/.claude`"). But it never fetches the links,
+   so it's only a lower bound.
+2. **Whole-package claim (author's client).** The real tier is the whole
+   package — text plus the repo/skill it references — and only whoever holds it
+   can compute it: the author's client, at publish. A claim can *raise* the
+   tier but never lower it below the server floor — the author has every
+   incentive to say "T0", so their number is trusted only when it's *worse* than
+   the text.
+3. **Verification (reproducers' clients).** The strongest signal: whoever runs
+   the story recomputes the tier on the *live* artifacts before executing. If it
+   rose above what was published, their agent warns them and stops — and once
+   independently corroborated, the story's badge flips to "⚠ changed since
+   publish."
+
+Not a promise that I vetted it and it's safe. A disclosure you can re-derive
+yourself, pinned to the exact version you're looking at — and one that catches
+the very attack from the top of this piece: files swapped after publication. An
+honest caveat: the reproducer step is an instruction to the agent, not
+enforcement — an agent can skip it. worklore is cooperative by nature, and I'd
+rather say that out loud than pretend the hole is fully closed.
 
 ## Over to you
 
