@@ -86,11 +86,20 @@ rule("obfuscation", "opaque",
 # --- ELEVATED: privilege, secrets, destruction. The "read my passwords" /
 #     "survives reboot" class. Forces T3. (Persistence is context-aware — see
 #     the CONFIG/WRITE/HOME regexes and the scan loop below.) ---
+# STRUCTURAL, language-independent signals only. To make an agent touch a
+# credential the skill must name the PATH (universal across languages and
+# phrasings), or hardcode the secret inline. Bare prose words like "password"
+# are NOT matched — enumerating verbs in one language is a losing game and
+# blind to paraphrase/other languages. Prose intent ("read the user's keys",
+# in any language) is the AGENT layer's job, not the regex's.
 rule("secrets", "elevated",
      "references credential/secret file locations",
-     r"(?:\.aws/|\.ssh/|id_rsa|id_ed25519|\.netrc|\.npmrc|\.env\b|"
-     r"credentials|keychain|secret[_-]?key|private[_-]?key|password|"
-     r"\.pgpass|\.git-credentials|GITHUB_TOKEN|AWS_SECRET)")
+     r"(?:\.aws/|\.ssh/|id_rsa|id_ed25519|\.netrc|\.npmrc|\.env\b|\.pgpass|"
+     r"\.git-credentials|/etc/shadow|keychain|GITHUB_TOKEN|AWS_SECRET)")
+rule("secrets", "elevated",
+     "hardcoded secret assigned inline",
+     r"(?:password|secret|api[_-]?key|access[_-]?token|auth[_-]?token)"
+     r"s?\s*[=:]\s*[\"']?[\w./+-]{8,}")
 rule("destructive", "elevated",
      "destructive filesystem or disk command",
      r"(?:\brm\s+-rf?\b|\bdd\s+if=|\bmkfs\b|>\s*/dev/sd|chmod\s+-R?\s*777|"
