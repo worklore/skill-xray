@@ -305,12 +305,6 @@ worklore тихо сказала вашему агенту `curl | bash`, а в�
 сигнализировать, — пожалуйста, разнесите этот текст в комментариях. Я здесь ради вашего мнения. И, перефразируя автора той истории из начала: а вы
 вообще открывали файлы скиллов, которые себе поставили?
 
----
-
-*Disclosure: черновик статьи я писала вместе со своим агентом (Claude Code), сам
-инструмент — тоже. Мне кажется, для статьи именно про доверие к ИИ-агентам это
-честно сказать вслух.*
-
 [tg]: https://t.me/TochkiNadAI/2604
 [snyk]: https://snyk.io/blog/toxicskills-malicious-ai-agent-skills-clawhub/
 [dev]: https://dev.to/harivenkatakrishnakotha/your-claude-code-skills-might-be-stealing-your-credentials-right-now-2d0h
