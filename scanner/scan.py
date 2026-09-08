@@ -35,7 +35,7 @@ from pathlib import Path
 # Bump when detection changes so a tier can be compared meaningfully across
 # server (publish-time) and client (reproduction-time) runs. A drift report
 # carries this so we never compare tiers computed by different rule sets.
-SCANNER_VERSION = "0.3.1"
+SCANNER_VERSION = "0.3.2"
 
 # Files worth reading as instruction/text/code. Binary and vendored trees are
 # hashed for provenance but not pattern-scanned.
@@ -144,6 +144,10 @@ WRITE_CTX = re.compile(
 HOME_ANCHOR = re.compile(
     r"(?:~/|\$HOME|\$\{HOME\}|expanduser|/Users/[^/\s]+/|/home/[^/\s]+/|"
     r"/etc/|/Library/)", re.I)
+# The agent's drop-in skills directory: installing a skill *into* it is the
+# standard, documented way skills are added — structurally distinct from
+# editing existing agent config/startup (CLAUDE.md, settings.json, shell rc).
+SKILLS_DIR = re.compile(r"(?:\.claude|\.codex|\.cursor)/skills/", re.I)
 # A genuine outbound call. curl/wget count only alongside a URL (so prose like
 # "auto-curl" doesn't match); code HTTP clients count on their own.
 SHELL_FETCH = re.compile(r"(?<![\w-])(?:curl|wget)\b", re.I)
@@ -238,17 +242,29 @@ def detect(text: str, rel: str) -> tuple[list[Finding], set[str]]:
         # elevated; naming/reading a repo-relative config file (a skill
         # inspecting its own repo) is disclosed but not alarming.
         if CONFIG_FILE.search(line):
-            if WRITE_CTX.search(line) or HOME_ANCHOR.search(line):
-                findings.append(Finding(
-                    "persistence", "elevated",
-                    "edits agent config / startup in the user's environment "
-                    "(persists across sessions)", rel, i, line.strip()[:200]))
-            else:
+            acts = WRITE_CTX.search(line) or HOME_ANCHOR.search(line)
+            if not acts:
                 findings.append(Finding(
                     "config-ref", "info",
                     "names a config/agent file, repo-relative and without a "
                     "write (likely self-inspection, not an action)",
                     rel, i, line.strip()[:200]))
+            elif SKILLS_DIR.search(line):
+                # Installing a skill INTO the agent's skills dir is the
+                # documented way skills are added — not a silent edit of
+                # existing config/startup. Disclosed (it runs in later
+                # sessions), but the thing to review is that skill, so: local.
+                findings.append(Finding(
+                    "skill-install", "local",
+                    "installs a skill into the agent's skills directory — the "
+                    "standard way skills are added; it runs in later sessions, "
+                    "so the thing to review is that skill", rel, i,
+                    line.strip()[:200]))
+            else:
+                findings.append(Finding(
+                    "persistence", "elevated",
+                    "edits your agent config or startup so the change persists "
+                    "across sessions", rel, i, line.strip()[:200]))
 
         # Network: a URL inside an actual call is a capability; a bare URL in
         # prose/manifest is a reference (listed in endpoints, not a finding).
