@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{background:#fff}
+  #cap{width:1500px;background:#fff;font-family:'Inter',system-ui,sans-serif;color:#1c2430;padding:52px 60px 46px}
+  .title{font-size:34px;font-weight:800;letter-spacing:-0.02em}
+  .sub{font-size:18px;color:#5a6675;margin-top:8px;font-weight:500;max-width:1200px;line-height:1.45}
+  .flow{margin-top:38px;display:flex;flex-direction:column;gap:0}
+  .stage{display:grid;grid-template-columns:150px 1fr;gap:24px;align-items:start}
+  .snum{display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:4px}
+  .sdot{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    font-weight:800;font-size:17px;color:#fff}
+  .sname{font-size:12.5px;font-weight:700;color:#2c3542;text-align:center;line-height:1.2;letter-spacing:.02em;text-transform:uppercase}
+  .sbody{padding-bottom:26px}
+  .cards{display:flex;gap:14px;flex-wrap:wrap}
+  .card{flex:1;min-width:0;border:1.5px solid #dce1e8;border-radius:12px;padding:14px 16px;background:#fbfcfd}
+  .card h4{font-size:15.5px;font-weight:700;margin-bottom:6px}
+  .card p{font-size:13.5px;color:#48515e;line-height:1.4;font-weight:500}
+  .tag{display:inline-flex;align-items:center;gap:5px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;
+    padding:2px 8px;border-radius:20px;margin-top:9px}
+  .tag-hash{background:#eef3fb;color:#3f7fd0}
+  .tag-floor{background:#eaf6ef;color:#2f9e5f}
+  .rail{grid-column:1/3;height:22px;position:relative;margin:-6px 0 2px}
+  .rail::before{content:"";position:absolute;left:74px;top:0;bottom:0;width:2px;background:#cfd6df}
+  .rail span{position:absolute;left:66px;top:6px;width:18px;height:18px;color:#9aa4b1;font-size:15px;text-align:center;line-height:18px}
+  /* compare + outcomes */
+  .compare{border:2px solid #c8901f;background:#fdf6e8;border-radius:12px;padding:14px 18px}
+  .compare h4{font-size:16px;font-weight:800;color:#8a6410}
+  .compare .rows{display:flex;gap:10px;margin-top:6px;font-size:13.5px;font-weight:600;color:#5a4a1f;flex-wrap:wrap}
+  .compare .rows b{font-family:'JetBrains Mono',monospace}
+  .outs{display:flex;gap:14px;margin-top:14px}
+  .out{flex:1;border-radius:12px;padding:13px 15px;color:#fff}
+  .out h5{font-size:14.5px;font-weight:800;margin-bottom:4px}
+  .out p{font-size:13px;line-height:1.38;font-weight:500;opacity:.97}
+  .out-go{background:linear-gradient(180deg,#37b06d,#2f9e5f)}
+  .out-note{background:linear-gradient(180deg,#4b8ede,#3f7fd0)}
+  .out-stop{background:linear-gradient(180deg,#df5a5a,#d34b4b)}
+  .legend{margin-top:26px;display:flex;gap:28px;font-size:13.5px;color:#5a6675;font-weight:500;flex-wrap:wrap;
+    border-top:1px solid #e6eaef;padding-top:16px}
+  .legend b{color:#1c2430}
+  .kbd{font-family:'JetBrains Mono',monospace;font-weight:700}
+  .brand{float:right;font-size:16px;font-weight:800}.brand span{color:#3f7fd0}
+</style>
+</head>
+<body>
+<div id="cap">
+  <div class="title">Где живёт хэш и когда идут проверки</div>
+  <div class="sub">Две вещи сравниваются на каждом шаге: <b>хэш</b> — «изменилось ли содержимое» (машинная правда), и <b>причины</b> — «изменилось ли то, на что человек дал согласие». Проверка идёт трижды и не доверяет ни одному источнику в одиночку.</div>
+
+  <div class="flow">
+    <!-- STAGE 1 -->
+    <div class="stage">
+      <div class="snum"><div class="sdot" style="background:#2f9e5f">1</div><div class="sname">Публикация</div></div>
+      <div class="sbody">
+        <div class="cards">
+          <div class="card">
+            <h4>Сервер видит только текст</h4>
+            <p>Сканирует текст истории → <b>нижняя граница</b> тира. Подделать нельзя; ниже не опустить.</p>
+            <span class="tag tag-floor">floor + sha256(текст)</span>
+          </div>
+          <div class="card">
+            <h4>Клиент автора видит весь пакет</h4>
+            <p>Сканирует текст + репозиторий/скилл → тир, <b>причины</b> и хэш всего пакета. Может только поднять тир.</p>
+            <span class="tag tag-hash">🔒 sha256(пакет) + findings</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="rail"><span>↓</span></div>
+
+    <!-- STAGE 2 -->
+    <div class="stage">
+      <div class="snum"><div class="sdot" style="background:#3f7fd0">2</div><div class="sname">Согласие</div></div>
+      <div class="sbody">
+        <div class="cards">
+          <div class="card" style="background:#f6f9fd;border-color:#cfe0f5">
+            <h4>Опубликованное раскрытие = превью для человека</h4>
+            <p>«Тир T3, потому что <i>вот эти причины</i>. Согласны — запускайте.» Согласие привязано к <b>хэшу</b> (той версии) и к <b>причинам</b> (тем фактам).</p>
+            <span class="tag tag-hash">🔒 закреплено на sha256 + reasons</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="rail"><span>↓</span></div>
+
+    <!-- STAGE 3 -->
+    <div class="stage">
+      <div class="snum"><div class="sdot" style="background:#d8722e">3</div><div class="sname">Перед запуском</div></div>
+      <div class="sbody">
+        <div class="cards">
+          <div class="card" style="background:#fdf3ec;border-color:#f0d3bf">
+            <h4>Воспроизводящий / сторонний проверяющий пересчитывает на живых артефактах</h4>
+            <p>Свежий скан того, что <i>сейчас</i> по ссылкам → тир, причины, хэш. Публикует данные обратно (эндпойнт проверки).</p>
+            <span class="tag tag-hash">🔒 sha256(живое) + findings</span>
+          </div>
+        </div>
+        <div class="compare">
+          <h4>Сравнение с опубликованным</h4>
+          <div class="rows">
+            <span>🔒 <b>хэш</b> разошёлся? → содержимое изменилось</span>
+            <span>⚑ <b>новая опасная причина</b> или тир вырос? → согласие уже другое</span>
+          </div>
+          <div class="outs">
+            <div class="out out-go"><h5>✓ совпало</h5><p>Тир, причины и хэш те же — можно продолжать (всё равно прочитай находки).</p></div>
+            <div class="out out-note"><h5>📝 только хэш</h5><p>Байты изменились, причины/тир — нет. Записывается как данные, свежий взгляд не помешает.</p></div>
+            <div class="out out-stop"><h5>⛔ причина / тир</h5><p>СТОП, предупредить пользователя. При подтверждении разными людьми бейдж флипается в «⚠ изменилось с публикации».</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><b>🔒 хэш</b> — считается при каждом скане; отвечает на «те же ли это байты».</span>
+    <span><b>⚑ причины</b> — находки уровня elevated/opaque; отвечают на «то же ли, на что согласился человек».</span>
+    <span class="brand">skill<span>-</span>xray</span>
+  </div>
+</div>
+</body>
+</html>
