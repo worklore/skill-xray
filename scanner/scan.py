@@ -35,7 +35,22 @@ from pathlib import Path
 # Bump when detection changes so a tier can be compared meaningfully across
 # server (publish-time) and client (reproduction-time) runs. A drift report
 # carries this so we never compare tiers computed by different rule sets.
-SCANNER_VERSION = "0.3.2"
+SCANNER_VERSION = "0.4.0"
+
+# Behavioral signals live in a separate, human-editable catalog so anyone can
+# review or extend the red-flag list without touching scanner logic. They are a
+# SEPARATE axis from the capability tier — triage flags, never a verdict (see
+# behavioral_signals.py). Import is resilient to packaging (vendored flat in the
+# server, or scanner.behavioral_signals in the repo).
+try:
+    from behavioral_signals import BEHAVIORAL_SIGNALS
+except ImportError:  # pragma: no cover
+    try:
+        from .behavioral_signals import BEHAVIORAL_SIGNALS
+    except Exception:
+        BEHAVIORAL_SIGNALS = []
+_BEHAVIORAL = [(s["id"], s["category"], s["why"], re.compile(s["pattern"], re.I))
+               for s in BEHAVIORAL_SIGNALS]
 
 # Files worth reading as instruction/text/code. Binary and vendored trees are
 # hashed for provenance but not pattern-scanned.
@@ -202,6 +217,16 @@ class Report:
     backends: list[str] = field(default_factory=lambda: ["builtin"])
     endpoints: list[str] = field(default_factory=list)
     findings: list[dict] = field(default_factory=list)
+    # Behavioral red flags found in the TEXT (prompt-injection / deception /
+    # exfil-intent / safety-bypass) — a SEPARATE axis from the capability tier,
+    # and explicitly triage, never a verdict. See behavioral_signals.py.
+    behavioral: list[dict] = field(default_factory=list)
+    behavioral_note: str = (
+        "Behavioral signals are heuristic red flags in the skill's text, for a "
+        "human to review — not a verdict, and no defense against novel or "
+        "contextual manipulation. A hit can be benign (e.g. a security tutorial "
+        "quoting an attack); an empty list does not mean the text is safe."
+    )
     disclaimer: str = (
         "skill-xray reports observed CAPABILITY (blast radius) for this exact "
         "artifact hash. It is an informational disclosure, not a safety seal: "
@@ -284,9 +309,24 @@ def detect(text: str, rel: str) -> tuple[list[Finding], set[str]]:
     return findings, endpoints
 
 
+def behavioral_scan(text: str, rel: str) -> list[dict]:
+    """Flag manipulation / injection / exfil-intent phrasings in the TEXT.
+    Separate from detect() (which reports capability): these are triage red
+    flags for a human, never a tier and never a verdict. Deduped per (signal,
+    file) so a repeated phrase doesn't spam the report."""
+    out, seen = [], set()
+    for i, line in enumerate(text.splitlines(), 1):
+        for sid, cat, why, pat in _BEHAVIORAL:
+            if pat.search(line) and (sid, rel) not in seen:
+                seen.add((sid, rel))
+                out.append({"id": sid, "category": cat, "why": why,
+                            "file": rel, "line": i, "evidence": line.strip()[:200]})
+    return out
+
+
 def _finalize(artifact: str, sha256: str, files_scanned: int,
               findings: list[Finding], endpoints: set[str],
-              backends_run: list[str]) -> Report:
+              backends_run: list[str], behavioral: list[dict] | None = None) -> Report:
     max_sev = max((SEV_RANK[f.severity] for f in findings), default=0)
     tier = TIER_OF_SEV[max_sev]
     seen, uniq = set(), []
@@ -300,6 +340,7 @@ def _finalize(artifact: str, sha256: str, files_scanned: int,
         artifact=artifact, sha256=sha256, files_scanned=files_scanned,
         tier=tier, tier_label=TIER_LABEL[tier], backends=backends_run,
         endpoints=sorted(endpoints), findings=[asdict(f) for f in uniq],
+        behavioral=behavioral or [],
     )
 
 
@@ -311,13 +352,15 @@ def scan_text(text: str, name: str = "SKILL.md") -> Report:
     hasher.update(name.encode())
     hasher.update(text.encode("utf-8"))
     findings, endpoints = detect(text, name)
-    return _finalize(name, hasher.hexdigest(), 1, findings, endpoints, ["builtin"])
+    return _finalize(name, hasher.hexdigest(), 1, findings, endpoints, ["builtin"],
+                     behavioral_scan(text, name))
 
 
 def scan(root: Path, backends: tuple[str, ...] = ("builtin",)) -> Report:
     hasher = hashlib.sha256()
     findings: list[Finding] = []
     endpoints: set[str] = set()
+    behavioral: list[dict] = []
     n = 0
     for p in iter_files(root):
         try:
@@ -339,6 +382,7 @@ def scan(root: Path, backends: tuple[str, ...] = ("builtin",)) -> Report:
         f, e = detect(text, rel)
         findings.extend(f)
         endpoints |= e
+        behavioral.extend(behavioral_scan(text, rel))
 
     # Optional external detection backends. skill-xray does not compete on
     # detection: another scanner can be plugged in here and its findings merged.
@@ -362,7 +406,8 @@ def scan(root: Path, backends: tuple[str, ...] = ("builtin",)) -> Report:
         except Exception as e:  # a backend must never crash the disclosure
             print(f"skill-xray: backend '{name}' failed: {e}", file=sys.stderr)
 
-    return _finalize(str(root), hasher.hexdigest(), n, findings, endpoints, ran)
+    return _finalize(str(root), hasher.hexdigest(), n, findings, endpoints, ran,
+                     behavioral)
 
 
 # name -> callable(root: Path) -> list[Finding]. Empty by design; see the note
